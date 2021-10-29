@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using VkNet.Abstractions;
+using VkNet.Exception;
 
 namespace Vetinari.Core
 {
@@ -17,7 +18,8 @@ namespace Vetinari.Core
         public ParseContainer<TIn, TOut> AddNext<TIn, TOut>(int queueLength, int threadCount,
             Func<TIn, Task<IEnumerable<TOut>>> func)
         {
-            return new ParseContainer<TIn, TOut>(queueLength, threadCount, func, Vk, Ctx);
+            ResTask = new TaskCompletionSource();
+            return new ParseContainer<TIn, TOut>(queueLength, threadCount, func, Vk) { Prev = this, ResTask = ResTask };
         }
     }
 
@@ -25,9 +27,9 @@ namespace Vetinari.Core
     {
         private readonly Channel<TIn> _input;
         private readonly Func<TIn, Task<IEnumerable<TOut>>> _parseFunc;
-
         private readonly List<Task> _workers = new();
         private Channel<TOut> _output;
+        private Task _outWriter;
 
         public ParseContainer(int queueLength, int threadCount, Func<TIn, Task<IEnumerable<TOut>>> parseFunc, IVkApi vk,
             CancellationToken? ctx = null) : base(threadCount, ctx)
@@ -37,7 +39,7 @@ namespace Vetinari.Core
             Vk = vk;
         }
 
-        public ParseContainer<TIn, TOut> SetInput(IEnumerable<TIn> input)
+        public ParseContainer<TIn, TOut> SetInput(ICollection<TIn> input)
         {
             _workers.Add(ReadDataAsync(input));
             return this;
@@ -46,17 +48,18 @@ namespace Vetinari.Core
         public ParseContainer<TIn, TOut> SetOutput(ICollection<TOut> output)
         {
             _output = Channel.CreateUnbounded<TOut>();
-            _workers.Add(WriteDataAsync(output));
+            _outWriter = WriteDataAsync(output);
             return this;
         }
 
-        public ParseContainer<TIn, TOut> Start()
+        public Task Start()
         {
             RunAsync();
-            return this;
+            IsLastChain = true;
+            return ResTask.Task;
         }
 
-        private async Task ReadDataAsync(IEnumerable<TIn> inputData)
+        private async Task ReadDataAsync(ICollection<TIn> inputData)
         {
             var writer = _input.Writer;
             try
@@ -70,6 +73,9 @@ namespace Vetinari.Core
             catch (OperationCanceledException)
             {
             }
+
+            Prev.IsCompleted = true;
+            Prev.RequestsTotal = inputData.Count;
         }
 
         private async Task WriteDataAsync(ICollection<TOut> inputData)
@@ -91,9 +97,10 @@ namespace Vetinari.Core
         public ParseContainer<TOut, TNew> AddNext<TNew>(int queueLength, int threadCount,
             Func<TOut, Task<IEnumerable<TNew>>> func) //where TNew : IEnumerable<TNew>
         {
-            var next = new ParseContainer<TOut, TNew>(queueLength, threadCount, func, Vk, Ctx)
+            var next = new ParseContainer<TOut, TNew>(queueLength, threadCount, func, Vk)
             {
-                Prev = this
+                Prev = this,
+                ResTask = ResTask
             };
             _output = next._input;
             return next;
@@ -119,11 +126,33 @@ namespace Vetinari.Core
                     ctx.ThrowIfCancellationRequested();
                     var input = await reader.ReadAsync(ctx).ConfigureAwait(false);
                     var results = await _parseFunc(input).ConfigureAwait(false);
-                    foreach (var result in results) await writer.WriteAsync(result, ctx).ConfigureAwait(false);
+                    foreach (var result in results)
+                    {
+                        await writer.WriteAsync(result, ctx).ConfigureAwait(false);
+                        Interlocked.Add(ref RequestsTotal, 1);
+                    }
+
+                    var completed = Interlocked.Add(ref RequestsCompleted, 1);
+                    if (Prev.IsCompleted && Prev.RequestsTotal == RequestsCompleted)
+                    {
+                        IsCompleted = true;
+                        if (IsLastChain)
+                        {
+                            await _outWriter;
+                            ResTask.SetResult();
+                        }
+
+                        Cts.Cancel();
+                    }
                 }
             }
             catch (OperationCanceledException)
             {
+            }
+
+            catch (RateLimitReachedException ex)
+            {
+                ResTask.SetException(ex);
             }
         }
     }

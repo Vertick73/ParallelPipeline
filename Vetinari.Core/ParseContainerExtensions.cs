@@ -11,7 +11,8 @@ namespace Vetinari.Core
 {
     public static class ParseContainerExtensions
     {
-        public static void GetGroups(this ParseContainer container, int queueLength, int threadCount, long userId,
+        public static ParseContainer<long, Group> GetGroups(this ParseContainer container, int queueLength,
+            int threadCount, long userId,
             GroupsGetParams initParams = null)
         {
             var perStep = 1000;
@@ -51,6 +52,7 @@ namespace Vetinari.Core
 
             var next = container.AddNext<long, Group>(queueLength, threadCount, ParseFunc);
             next.SetInput(new[] { userId });
+            return next;
         }
 
         public static ParseContainer<Group, Post> GetPosts<T>(this ParseContainer<T, Group> container, int queueLength,
