@@ -1,7 +1,17 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net5.0</TargetFramework>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="VkNet" Version="1.67.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="VkNet.ExecuteExtension">
+      <HintPath>..\..\VkNet.ExecuteExtension\VkNet.ExecuteExtension\bin\Debug\net5.0\VkNet.ExecuteExtension.dll</HintPath>
+    </Reference>
+  </ItemGroup>
 
 </Project>

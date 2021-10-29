@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using VkNet.Abstractions;
 
 namespace Vetinari.Core
 {
@@ -11,6 +12,7 @@ namespace Vetinari.Core
         protected readonly CancellationToken Ctx;
         protected readonly int ThreadsCount;
         public ParseContainerBase Prev;
+        public IVkApi Vk;
         protected List<Task> Workers = new();
 
         protected ParseContainerBase(int threadsCount, CancellationToken? ctx = null)

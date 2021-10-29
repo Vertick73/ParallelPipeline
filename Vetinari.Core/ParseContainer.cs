@@ -3,22 +3,38 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using VkNet.Abstractions;
 
 namespace Vetinari.Core
 {
+    public class ParseContainer : ParseContainerBase
+    {
+        public ParseContainer(IVkApi vkApi) : base(0)
+        {
+            Vk = vkApi;
+        }
+
+        public ParseContainer<TIn, TOut> AddNext<TIn, TOut>(int queueLength, int threadCount,
+            Func<TIn, Task<IEnumerable<TOut>>> func)
+        {
+            return new ParseContainer<TIn, TOut>(queueLength, threadCount, func, Vk, Ctx);
+        }
+    }
+
     public class ParseContainer<TIn, TOut> : ParseContainerBase
     {
         private readonly Channel<TIn> _input;
-        private readonly Func<TIn, IEnumerable<TOut>> _parseFunc;
+        private readonly Func<TIn, Task<IEnumerable<TOut>>> _parseFunc;
 
         private readonly List<Task> _workers = new();
         private Channel<TOut> _output;
 
-        public ParseContainer(int queueLength, int threadCount, Func<TIn, IEnumerable<TOut>> parseFunc,
-            CancellationToken? ctx = null) : base(threadCount)
+        public ParseContainer(int queueLength, int threadCount, Func<TIn, Task<IEnumerable<TOut>>> parseFunc, IVkApi vk,
+            CancellationToken? ctx = null) : base(threadCount, ctx)
         {
             _input = Channel.CreateBounded<TIn>(queueLength);
             _parseFunc = parseFunc;
+            Vk = vk;
         }
 
         public ParseContainer<TIn, TOut> SetInput(IEnumerable<TIn> input)
@@ -48,7 +64,7 @@ namespace Vetinari.Core
                 foreach (var data in inputData)
                 {
                     Ctx.ThrowIfCancellationRequested();
-                    await writer.WriteAsync(data, Ctx);
+                    await writer.WriteAsync(data, Ctx).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException)
@@ -64,7 +80,7 @@ namespace Vetinari.Core
                 while (true)
                 {
                     Ctx.ThrowIfCancellationRequested();
-                    inputData.Add(await reader.ReadAsync(Ctx));
+                    inputData.Add(await reader.ReadAsync(Ctx).ConfigureAwait(false));
                 }
             }
             catch (OperationCanceledException)
@@ -73,12 +89,14 @@ namespace Vetinari.Core
         }
 
         public ParseContainer<TOut, TNew> AddNext<TNew>(int queueLength, int threadCount,
-            Func<TOut, IEnumerable<TNew>> func)
+            Func<TOut, Task<IEnumerable<TNew>>> func) //where TNew : IEnumerable<TNew>
         {
-            var t = new ParseContainer<TOut, TNew>(queueLength, threadCount, func, Ctx);
-            t.Prev = this;
-            _output = t._input;
-            return t;
+            var next = new ParseContainer<TOut, TNew>(queueLength, threadCount, func, Vk, Ctx)
+            {
+                Prev = this
+            };
+            _output = next._input;
+            return next;
         }
 
         public override void RunAsync()
@@ -99,9 +117,9 @@ namespace Vetinari.Core
                 while (true)
                 {
                     ctx.ThrowIfCancellationRequested();
-                    var input = await reader.ReadAsync(ctx);
-                    var results = _parseFunc(input);
-                    foreach (var result in results) await writer.WriteAsync(result, ctx);
+                    var input = await reader.ReadAsync(ctx).ConfigureAwait(false);
+                    var results = await _parseFunc(input).ConfigureAwait(false);
+                    foreach (var result in results) await writer.WriteAsync(result, ctx).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException)
