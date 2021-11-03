@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using VkNet.Abstractions;
 using VkNet.Enums.Filters;
 using VkNet.Enums.SafetyEnums;
 using VkNet.Model;
@@ -9,9 +10,10 @@ using VkNet.Model.RequestParams;
 
 namespace Vetinari.Core
 {
-    public static class ParseContainerExtensions
+    public static class VkMultiThreadedPipelineExtensions
     {
-        public static ParseContainer<long, Group> GetGroups(this ParseContainer container, int queueLength,
+        public static VkMultiThreadedPipeline<long, Group> GetGroups(this VkPipeline multiThreadedPipelinePart,
+            int queueLength,
             int threadCount, long userId,
             GroupsGetParams initParams = null)
         {
@@ -30,7 +32,7 @@ namespace Vetinari.Core
             {
                 var funkParams = initParams.Clone();
                 funkParams.UserId = userId;
-                var res = await container.Vk.Groups.GetAsync(funkParams).ConfigureAwait(false);
+                var res = await multiThreadedPipelinePart.VkApi.Groups.GetAsync(funkParams).ConfigureAwait(false);
                 var needCount = totalNeedCount ?? (long)res.TotalCount;
 
                 if (needCount > res.Count)
@@ -40,7 +42,8 @@ namespace Vetinari.Core
                     {
                         funkParams.Count = i + perStep > needCount ? needCount - i : perStep;
                         funkParams.Offset += i;
-                        var nextRes = await container.Vk.Groups.GetAsync(funkParams).ConfigureAwait(false);
+                        var nextRes = await multiThreadedPipelinePart.VkApi.Groups.GetAsync(funkParams)
+                            .ConfigureAwait(false);
                         newRes.AddRange(nextRes);
                     }
 
@@ -50,13 +53,16 @@ namespace Vetinari.Core
                 return res;
             }
 
-            var next = container.AddNext<long, Group>(queueLength, threadCount, ParseFunc);
+            var next = new VkMultiThreadedPipeline<long, Group>(queueLength, threadCount, ParseFunc)
+                { VkApi = multiThreadedPipelinePart.VkApi };
             next.SetInput(new[] { userId });
             return next;
         }
 
-        public static ParseContainer<Group, Post> GetPosts<T>(this ParseContainer<T, Group> container, int queueLength,
-            int threadCount, WallGetParams initParams = null)
+        public static VkMultiThreadedPipeline<Group, Post> GetPosts<T>(
+            this VkMultiThreadedPipeline<T, Group> multiThreadedPipeline,
+            int queueLength,
+            int threadCount, WallGetParams initParams = null, IVkApi vkApi = null)
         {
             var perStep = 100u;
             initParams ??= new WallGetParams
@@ -68,9 +74,10 @@ namespace Vetinari.Core
 
             async Task<IEnumerable<Post>> ParseFunc(Group group)
             {
+                if (!group.CanSeeAllPosts) return Array.Empty<Post>();
                 var funkParams = initParams.Clone();
                 funkParams.OwnerId = -group.Id;
-                var res = await container.Vk.Wall.GetAsync(funkParams).ConfigureAwait(false);
+                var res = await multiThreadedPipeline.VkApi.Wall.GetAsync(funkParams).ConfigureAwait(false);
                 var needCount = totalNeedCount == 0 ? res.TotalCount : totalNeedCount;
 
                 if (needCount > (ulong)res.WallPosts.Count)
@@ -80,7 +87,7 @@ namespace Vetinari.Core
                     {
                         funkParams.Count = i + perStep > needCount ? needCount - i : perStep;
                         funkParams.Offset += i;
-                        var nextRes = await container.Vk.Wall.GetAsync(funkParams).ConfigureAwait(false);
+                        var nextRes = await multiThreadedPipeline.VkApi.Wall.GetAsync(funkParams).ConfigureAwait(false);
                         newRes.AddRange(nextRes.WallPosts);
                     }
 
@@ -90,20 +97,22 @@ namespace Vetinari.Core
                 return res.WallPosts;
             }
 
-            return container.AddNext(queueLength, threadCount, ParseFunc);
+            return multiThreadedPipeline.AddNext(queueLength, threadCount, ParseFunc, vkApi: vkApi);
         }
 
-        public static ParseContainer<Post, Post> PostsIsLiked<T>(this ParseContainer<T, Post> container,
-            int queueLength, int threadCount, long userId)
+        public static VkMultiThreadedPipeline<Post, Post> PostsIsLiked<T>(
+            this VkMultiThreadedPipeline<T, Post> multiThreadedPipeline,
+            int queueLength, int threadCount, long userId, IVkApi vkApi = null)
         {
             async Task<IEnumerable<Post>> ParseFunc(Post post)
             {
-                if (await container.Vk.Likes.IsLikedAsync(LikeObjectType.Post, post.Id.Value, userId, post.OwnerId))
+                if (await multiThreadedPipeline.VkApi.Likes.IsLikedAsync(LikeObjectType.Post, post.Id.Value, userId,
+                    post.OwnerId))
                     return new[] { post };
                 return Array.Empty<Post>();
             }
 
-            return container.AddNext(queueLength, threadCount, ParseFunc);
+            return multiThreadedPipeline.AddNext(queueLength, threadCount, ParseFunc, vkApi: vkApi);
         }
     }
 }

@@ -2,30 +2,22 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using VkNet.Abstractions;
 
 namespace Vetinari.Core
 {
-    public abstract class ParseContainerBase : IDisposable
+    public abstract class MultiThreadedPipelineBase : IDisposable
     {
         protected readonly CancellationTokenSource Cts;
-        protected readonly CancellationToken Ctx;
-        protected readonly int ThreadsCount;
+        protected readonly CancellationToken Token;
         private bool _disposed;
-        public bool IsCompleted;
-        public bool IsLastChain = false;
-        public ParseContainerBase Prev;
-        public int RequestsCompleted;
-        public int RequestsTotal;
+        public MultiThreadedPipelineBase Prev;
         public TaskCompletionSource ResTask;
-        public IVkApi Vk;
         protected List<Task> Workers = new();
 
-        protected ParseContainerBase(int threadsCount, CancellationToken? ctx = null)
+        protected MultiThreadedPipelineBase(CancellationToken? token = null)
         {
-            ThreadsCount = threadsCount;
-            if (ctx == null) Cts = new CancellationTokenSource();
-            Ctx = ctx ?? Cts.Token;
+            if (token == null) Cts = new CancellationTokenSource();
+            Token = token ?? Cts.Token;
         }
 
         public virtual void Dispose()
@@ -47,7 +39,7 @@ namespace Vetinari.Core
             _disposed = true;
         }
 
-        public virtual void RunAsync()
+        public virtual void RunAsync(bool autoCompletion)
         {
         }
     }
