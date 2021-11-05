@@ -6,11 +6,10 @@ using System.Threading.Tasks;
 
 namespace ParallelPipeline
 {
-    public class ParallelPipelineBuilder<TIn, TOut> //start
+    public class ParallelPipelineBuilder<TIn, TLastOut> : ParallelPipelineBuilderBase //start
     {
         private IPipelineInput<TIn> _input;
-        private IPipelineOutput<TOut> _output;
-        private ICollection<IPipelineBase> _steps;
+        private IPipelineOutput<TLastOut> _output;
 
         public ParallelPipelineStep<TIn, TNew> AddStep<TNew>(Func<TIn, Task<IEnumerable<TNew>>> func, int queueLength,
             int threadCount)
@@ -28,18 +27,10 @@ namespace ParallelPipeline
 
         private ParallelPipelineStep<TIn, TNew> AddStepBase<TNew>(ParallelPipeline<TIn, TNew> input)
         {
-            _steps = new List<IPipelineBase>();
+            Steps = new List<IPipelineBase>();
             _input = input;
-            _steps.Add(input);
-            return new ParallelPipelineStep<TIn, TNew>(_steps, input);
-        }
-
-        public Task Start()
-        {
-            var tasks = new List<Task>();
-            foreach (var step in _steps) tasks.Add(step.Run());
-
-            return Task.WhenAll(tasks);
+            Steps.Add(input);
+            return new ParallelPipelineStep<TIn, TNew>(Steps, input) { PipelineBuilder = this };
         }
 
         public ChannelWriter<TIn> GetInputWriter()
@@ -47,11 +38,11 @@ namespace ParallelPipeline
             return _input.Input.Writer;
         }
 
-        public void SetOutputChanel(Channel<TOut> outChannel)
+        public void SetOutputChanel(Channel<TLastOut> outChannel)
         {
             try
             {
-                _output = (IPipelineOutput<TOut>)_steps.Last();
+                _output = (IPipelineOutput<TLastOut>)Steps.Last();
                 _output.Output = outChannel;
             }
             catch (Exception ex)

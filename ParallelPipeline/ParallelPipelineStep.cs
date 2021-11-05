@@ -22,12 +22,14 @@ namespace ParallelPipeline
             _parallelPipeline = parallelPipeline;
         }
 
+        public ParallelPipelineBuilderBase PipelineBuilder { get; init; }
+
         public virtual ParallelPipelineStep<TOut, TNew> AddStep<TNew>(Func<TOut, Task<IEnumerable<TNew>>> func,
             int queueLength, int threadCount)
         {
             var next = new ParallelPipeline<TOut, TNew>(func, queueLength, threadCount, _parallelPipeline);
             _steps.Add(next);
-            return new ParallelPipelineStep<TOut, TNew>(_steps, next);
+            return new ParallelPipelineStep<TOut, TNew>(_steps, next) { PipelineBuilder = PipelineBuilder };
         }
 
         public virtual ParallelPipelineStep<TOut, TNew> AddStep<TNew>(Func<TOut, Task<TNew>> func, int queueLength,
@@ -35,7 +37,7 @@ namespace ParallelPipeline
         {
             var next = new ParallelPipeline<TOut, TNew>(func, queueLength, threadCount, _parallelPipeline);
             _steps.Add(next);
-            return new ParallelPipelineStep<TOut, TNew>(_steps, next);
+            return new ParallelPipelineStep<TOut, TNew>(_steps, next) { PipelineBuilder = PipelineBuilder };
         }
     }
 }

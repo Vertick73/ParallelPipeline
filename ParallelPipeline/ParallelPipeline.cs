@@ -77,7 +77,7 @@ namespace ParallelPipeline
                     {
                         var input = await reader.ReadAsync(token).ConfigureAwait(false);
                         var result = await StepFunc(input).ConfigureAwait(false);
-                        await writer.WriteAsync(result);
+                        if (result != null) await writer.WriteAsync(result);
                     }
             }
             catch (OperationCanceledException)
