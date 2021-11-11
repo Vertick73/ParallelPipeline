@@ -8,8 +8,8 @@ namespace ParallelPipeline
 {
     public interface IPipeline<TIn, TOut> : IPipelineBase, IPipelineInput<TIn>, IPipelineOutput<TOut>
     {
-        public Func<TIn, Task<TOut>> StepFunc { get; }
-        public Func<TIn, Task<IEnumerable<TOut>>> StepFuncIEnumerable { get; }
+        public Func<TIn, Task<TOut>> StepFuncAsync { get; }
+        public Func<TIn, Task<IEnumerable<TOut>>> StepFuncIEnumerableAsync { get; }
     }
 
     public interface IPipelineInput<TIn>

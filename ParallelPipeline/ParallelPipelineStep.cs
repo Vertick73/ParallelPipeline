@@ -24,7 +24,25 @@ namespace ParallelPipeline
 
         public ParallelPipelineBuilderBase PipelineBuilder { get; init; }
 
-        public virtual ParallelPipelineStep<TOut, TNew> AddStep<TNew>(Func<TOut, Task<IEnumerable<TNew>>> func,
+        public virtual ParallelPipelineStep<TOut, TNew> AddStepAsync<TNew>(
+            Func<TOut, Task<IEnumerable<TNew>>> funcAsync,
+            int queueLength, int threadCount)
+        {
+            var next = new ParallelPipeline<TOut, TNew>(funcAsync, queueLength, threadCount, _parallelPipeline);
+            _steps.Add(next);
+            return new ParallelPipelineStep<TOut, TNew>(_steps, next) { PipelineBuilder = PipelineBuilder };
+        }
+
+        public virtual ParallelPipelineStep<TOut, TNew> AddStepAsync<TNew>(Func<TOut, Task<TNew>> funcAsync,
+            int queueLength,
+            int threadCount)
+        {
+            var next = new ParallelPipeline<TOut, TNew>(funcAsync, queueLength, threadCount, _parallelPipeline);
+            _steps.Add(next);
+            return new ParallelPipelineStep<TOut, TNew>(_steps, next) { PipelineBuilder = PipelineBuilder };
+        }
+
+        public virtual ParallelPipelineStep<TOut, TNew> AddStep<TNew>(Func<TOut, IEnumerable<TNew>> func,
             int queueLength, int threadCount)
         {
             var next = new ParallelPipeline<TOut, TNew>(func, queueLength, threadCount, _parallelPipeline);
@@ -32,7 +50,7 @@ namespace ParallelPipeline
             return new ParallelPipelineStep<TOut, TNew>(_steps, next) { PipelineBuilder = PipelineBuilder };
         }
 
-        public virtual ParallelPipelineStep<TOut, TNew> AddStep<TNew>(Func<TOut, Task<TNew>> func, int queueLength,
+        public virtual ParallelPipelineStep<TOut, TNew> AddStep<TNew>(Func<TOut, TNew> func, int queueLength,
             int threadCount)
         {
             var next = new ParallelPipeline<TOut, TNew>(func, queueLength, threadCount, _parallelPipeline);

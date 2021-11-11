@@ -11,16 +11,28 @@ namespace ParallelPipeline
         private readonly int _threadsCount;
         private readonly List<Task> _workers = new();
 
-        public ParallelPipeline(Func<TIn, Task<IEnumerable<TOut>>> func, int queueLength, int threadCount,
+        public ParallelPipeline(Func<TIn, IEnumerable<TOut>> func, int queueLength, int threadCount,
             IPipelineOutput<TIn> prev = null) : this(queueLength, threadCount, prev)
         {
             StepFuncIEnumerable = func;
         }
 
-        public ParallelPipeline(Func<TIn, Task<TOut>> func, int queueLength, int threadCount,
+        public ParallelPipeline(Func<TIn, TOut> func, int queueLength, int threadCount,
             IPipelineOutput<TIn> prev = null) : this(queueLength, threadCount, prev)
         {
             StepFunc = func;
+        }
+
+        public ParallelPipeline(Func<TIn, Task<IEnumerable<TOut>>> funcAsync, int queueLength, int threadCount,
+            IPipelineOutput<TIn> prev = null) : this(queueLength, threadCount, prev)
+        {
+            StepFuncIEnumerableAsync = funcAsync;
+        }
+
+        public ParallelPipeline(Func<TIn, Task<TOut>> funcAsync, int queueLength, int threadCount,
+            IPipelineOutput<TIn> prev = null) : this(queueLength, threadCount, prev)
+        {
+            StepFuncAsync = funcAsync;
         }
 
         private ParallelPipeline(int queueLength, int threadCount, IPipelineOutput<TIn> prev = null)
@@ -30,6 +42,9 @@ namespace ParallelPipeline
             Input = Channel.CreateBounded<TIn>(queueLength);
             if (prev != null) prev.Output = Input;
         }
+
+        public Func<TIn, TOut> StepFunc { get; }
+        public Func<TIn, IEnumerable<TOut>> StepFuncIEnumerable { get; }
 
         public virtual Task Run()
         {
@@ -47,8 +62,8 @@ namespace ParallelPipeline
 
         public Channel<TIn> Input { get; set; }
         public Channel<TOut> Output { get; set; }
-        public Func<TIn, Task<TOut>> StepFunc { get; }
-        public Func<TIn, Task<IEnumerable<TOut>>> StepFuncIEnumerable { get; }
+        public Func<TIn, Task<TOut>> StepFuncAsync { get; }
+        public Func<TIn, Task<IEnumerable<TOut>>> StepFuncIEnumerableAsync { get; }
 
         private async Task CompletionAsync(ICollection<Task> task)
         {
@@ -63,11 +78,27 @@ namespace ParallelPipeline
         {
             try
             {
+                if (StepFuncIEnumerableAsync != null) //1:N Async
+                    while (true)
+                    {
+                        var input = await reader.ReadAsync(token).ConfigureAwait(false);
+                        var results = await StepFuncIEnumerableAsync(input).ConfigureAwait(false);
+                        foreach (var result in results) await writer.WriteAsync(result);
+                    }
+
+                if (StepFuncAsync != null) //1:1 Async
+                    while (true)
+                    {
+                        var input = await reader.ReadAsync(token).ConfigureAwait(false);
+                        var result = await StepFuncAsync(input).ConfigureAwait(false);
+                        if (result != null) await writer.WriteAsync(result).ConfigureAwait(false);
+                    }
+
                 if (StepFuncIEnumerable != null) //1:N
                     while (true)
                     {
                         var input = await reader.ReadAsync(token).ConfigureAwait(false);
-                        var results = await StepFuncIEnumerable(input).ConfigureAwait(false);
+                        var results = StepFuncIEnumerable(input);
                         foreach (var result in results) await writer.WriteAsync(result);
                     }
 
@@ -75,7 +106,7 @@ namespace ParallelPipeline
                     while (true)
                     {
                         var input = await reader.ReadAsync(token).ConfigureAwait(false);
-                        var result = await StepFunc(input).ConfigureAwait(false);
+                        var result = StepFunc(input);
                         if (result != null) await writer.WriteAsync(result).ConfigureAwait(false);
                     }
             }

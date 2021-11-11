@@ -11,19 +11,35 @@ namespace ParallelPipeline
         private IPipelineInput<TIn> _input;
         private IPipelineOutput<TLastOut> _output;
 
-        public ParallelPipelineStep<TIn, TNew> AddStep<TNew>(Func<TIn, Task<IEnumerable<TNew>>> func, int queueLength,
+        public ParallelPipelineStep<TIn, TNew> AddStepAsync<TNew>(Func<TIn, Task<IEnumerable<TNew>>> funcAsync,
+            int queueLength,
+            int threadCount)
+        {
+            var input = new ParallelPipeline<TIn, TNew>(funcAsync, queueLength, threadCount);
+            return AddStepBase(input);
+        }
+
+        public ParallelPipelineStep<TIn, TNew> AddStepAsync<TNew>(Func<TIn, Task<TNew>> funcAsync, int queueLength,
+            int threadCount)
+        {
+            var input = new ParallelPipeline<TIn, TNew>(funcAsync, queueLength, threadCount);
+            return AddStepBase(input);
+        }
+
+        public ParallelPipelineStep<TIn, TNew> AddStep<TNew>(Func<TIn, IEnumerable<TNew>> func, int queueLength,
             int threadCount)
         {
             var input = new ParallelPipeline<TIn, TNew>(func, queueLength, threadCount);
             return AddStepBase(input);
         }
 
-        public ParallelPipelineStep<TIn, TNew> AddStep<TNew>(Func<TIn, Task<TNew>> func, int queueLength,
+        public ParallelPipelineStep<TIn, TNew> AddStep<TNew>(Func<TIn, TNew> func, int queueLength,
             int threadCount)
         {
             var input = new ParallelPipeline<TIn, TNew>(func, queueLength, threadCount);
             return AddStepBase(input);
         }
+
 
         private ParallelPipelineStep<TIn, TNew> AddStepBase<TNew>(ParallelPipeline<TIn, TNew> input)
         {
