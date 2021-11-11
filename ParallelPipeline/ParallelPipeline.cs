@@ -10,7 +10,6 @@ namespace ParallelPipeline
     {
         private readonly int _threadsCount;
         private readonly List<Task> _workers = new();
-        private Task _completionTask;
 
         public ParallelPipeline(Func<TIn, Task<IEnumerable<TOut>>> func, int queueLength, int threadCount,
             IPipelineOutput<TIn> prev = null) : this(queueLength, threadCount, prev)
@@ -53,9 +52,9 @@ namespace ParallelPipeline
 
         private async Task CompletionAsync(ICollection<Task> task)
         {
-            await Input.Reader.Completion;
+            await Input.Reader.Completion.ConfigureAwait(false);
             Cts.Cancel();
-            await Task.WhenAll(task);
+            await Task.WhenAll(task).ConfigureAwait(false);
             Output.Writer.TryComplete();
         }
 
@@ -77,7 +76,7 @@ namespace ParallelPipeline
                     {
                         var input = await reader.ReadAsync(token).ConfigureAwait(false);
                         var result = await StepFunc(input).ConfigureAwait(false);
-                        if (result != null) await writer.WriteAsync(result);
+                        if (result != null) await writer.WriteAsync(result).ConfigureAwait(false);
                     }
             }
             catch (OperationCanceledException)

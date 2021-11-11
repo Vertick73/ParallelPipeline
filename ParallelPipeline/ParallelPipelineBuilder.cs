@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace ParallelPipeline
 {
-    public class ParallelPipelineBuilder<TIn, TLastOut> : ParallelPipelineBuilderBase //start
+    public class ParallelPipelineBuilder<TIn, TLastOut> : ParallelPipelineBuilderBase
     {
         private IPipelineInput<TIn> _input;
         private IPipelineOutput<TLastOut> _output;
@@ -49,6 +49,38 @@ namespace ParallelPipeline
             {
                 Console.WriteLine(ex.Message);
             }
+        }
+
+        public async Task<ICollection<TLastOut>> Start(TIn input)
+        {
+            _output ??= (IPipelineOutput<TLastOut>)Steps.Last();
+            _output.Output = Channel.CreateUnbounded<TLastOut>();
+            var writer = _input.Input.Writer;
+            await writer.WriteAsync(input).ConfigureAwait(false);
+            writer.Complete();
+            await Start().ConfigureAwait(false);
+            return await GetRes().ConfigureAwait(false);
+        }
+
+        public async Task<ICollection<TLastOut>> Start(IEnumerable<TIn> input)
+        {
+            _output ??= (IPipelineOutput<TLastOut>)Steps.Last();
+            _output.Output = Channel.CreateUnbounded<TLastOut>();
+            var startTask = Start();
+            var writer = _input.Input.Writer;
+            foreach (var data in input) await writer.WriteAsync(data).ConfigureAwait(false);
+            writer.Complete();
+            await startTask;
+            return await GetRes().ConfigureAwait(false);
+        }
+
+        public async Task<ICollection<TLastOut>> GetRes()
+        {
+            var reader = _output.Output.Reader;
+            var allData = reader.ReadAllAsync();
+            var res = new List<TLastOut>(reader.Count);
+            await foreach (var data in allData) res.Add(data);
+            return res;
         }
     }
 }
