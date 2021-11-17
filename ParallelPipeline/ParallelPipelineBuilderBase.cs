@@ -1,11 +1,20 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace ParallelPipeline
 {
-    public abstract class ParallelPipelineBuilderBase
+    public abstract class ParallelPipelineBuilderBase:IDisposable
     {
         public ICollection<IPipelineBase> Steps { get; protected set; }
+
+        public void Dispose()
+        {
+            foreach (var step in Steps)
+            {
+                step.Cts.Cancel();
+            }
+        }
 
         public virtual Task Start()
         {
